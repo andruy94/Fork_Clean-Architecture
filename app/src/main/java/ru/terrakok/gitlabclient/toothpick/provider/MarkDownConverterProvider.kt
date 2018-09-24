@@ -3,20 +3,29 @@ package ru.terrakok.gitlabclient.toothpick.provider
 import android.content.Context
 import android.graphics.Rect
 import okhttp3.OkHttpClient
+import org.commonmark.ext.gfm.strikethrough.StrikethroughExtension
+import org.commonmark.ext.gfm.tables.TablesExtension
+import org.commonmark.parser.Parser
+import ru.noties.markwon.SpannableBuilder
 import ru.noties.markwon.SpannableConfiguration
 import ru.noties.markwon.UrlProcessorRelativeToAbsolute
 import ru.noties.markwon.il.AsyncDrawableLoader
 import ru.noties.markwon.renderer.ImageSize
 import ru.noties.markwon.renderer.ImageSizeResolver
 import ru.noties.markwon.spans.SpannableTheme
+import ru.noties.markwon.tasklist.TaskListExtension
 import ru.terrakok.gitlabclient.R
+import ru.terrakok.gitlabclient.entity.Label
 import ru.terrakok.gitlabclient.extension.color
+import ru.terrakok.gitlabclient.markdown.*
+import ru.terrakok.gitlabclient.markdown.label.LabelDecorator
+import ru.terrakok.gitlabclient.markdown.label.LabelExtensionProcessor
+import ru.terrakok.gitlabclient.markdown.label.LabelVisitor
 import ru.terrakok.gitlabclient.model.system.SchedulersProvider
 import ru.terrakok.gitlabclient.presentation.global.MarkDownConverter
 import ru.terrakok.gitlabclient.toothpick.qualifier.DefaultServerPath
 import java.util.concurrent.Executors
 import javax.inject.Inject
-import javax.inject.Provider
 
 /**
  * Created by Konstantin Tskhovrebov (aka @terrakok) on 28.02.18.
@@ -26,7 +35,7 @@ class MarkDownConverterProvider @Inject constructor(
     private val httpClient: OkHttpClient,
     private val schedulers: SchedulersProvider,
     @DefaultServerPath private val defaultServerPath: String
-) : Provider<MarkDownConverter> {
+) {
 
     private val spannableTheme
         get() = SpannableTheme
@@ -78,8 +87,51 @@ class MarkDownConverterProvider @Inject constructor(
             .imageSizeResolver(imageSizeResolver)
             .build()
 
-    override fun get() = MarkDownConverter(
+    fun getMarkdownDecorator(labels: List<Label>): MarkdownDecorator {
+        return CompositeMarkdownDecorator(
+            LabelDecorator(
+                labels.flatMap {
+                    listOf(it.id.toString(), it.name)
+                }
+            )
+        )
+    }
+
+    fun getParser(labels: List<Label>): Parser {
+        return with(Parser.Builder()) {
+            extensions(
+                listOf(
+                    StrikethroughExtension.create(),
+                    TablesExtension.create(),
+                    TaskListExtension.create()
+                )
+            )
+
+            customDelimiterProcessor(
+                GitlabExtensionsDelimiterProcessor(
+                    mapOf(
+                        GitlabMarkdownExtension.LABEL to LabelExtensionProcessor(labels)
+                    )
+                )
+            )
+            build()
+        }
+    }
+
+    fun getCustomVisitor(spannableBuilder: SpannableBuilder) = CompositeVisitor(
         spannableConfig,
+        spannableBuilder,
+        LabelVisitor(
+            spannableConfig,
+            spannableBuilder
+        )
+    )
+
+    fun get(labels: List<Label>) = MarkDownConverter(
+        spannableConfig,
+        getParser(labels),
+        getMarkdownDecorator(labels),
+        { builder -> getCustomVisitor(builder) },
         schedulers
     )
 }
