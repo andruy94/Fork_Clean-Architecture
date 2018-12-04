@@ -5,6 +5,7 @@ import android.text.TextPaint
 import android.text.style.ClickableSpan
 import android.view.View
 import ru.terrakok.gitlabclient.entity.Label
+import timber.log.Timber
 
 class LabelSpan(
     val label: Label,
